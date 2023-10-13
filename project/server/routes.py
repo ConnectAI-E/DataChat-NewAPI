@@ -1,5 +1,5 @@
 from app import app
-
+from fastapi.security import OAuth2PasswordBearer
 
 
 # 定义登录接口
