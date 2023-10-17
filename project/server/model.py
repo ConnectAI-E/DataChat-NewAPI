@@ -1,137 +1,262 @@
 from es import Es
-import uuid
-#class User(es):
+import bson
+from datetime import datetime
+from elasticsearch_dsl import (
+    UpdateByQuery,
+    Search,
+    Q,
+    Boolean,
+    Date,
+    Integer,
+    Document,
+    InnerDoc,
+    Join,
+    Keyword,
+    Long,
+    Nested,
+    Object,
+    Text,
+    connections,
+    DenseVector
+)
 class NotFound(Exception): pass
+connections.create_connection(hosts="https://localhost:9200")
 
-def init():
+class ObjID():
+    def new_id():
+        return str(bson.ObjectId())
+    def is_valid(value):
+        return bson.ObjectId.is_valid(value)
+
+class User(Document):
+    __tablename__ = 'user'
+    id = Keyword(required= True)
+    openid = Long()
+    name = Text(fields={"keyword": Keyword()})
+    status = Integer(default=0)
+    extra = Object()    # 用于保存 JSON 数据
+    created = Date(default='now')
+    modified = Date(default='now')  # 用于保存最后一次修改的时间
+
+    class Index:
+        name = 'User'
+
+
+class Collection(Document):
+    __tablename__ = 'collection'
+    id = Keyword(required= True)
+    user_id = Long()
+    name = Text(analyzer='ik_max_word')
+    description = Text(analyzer='ik_max_word')  #知识库描述
+    summary = Text(analyzer='ik_max_word')  #知识库总结
+    status = Integer(default=0)
+    created = Date(default='now')
+    modified = Date(default='now')      # 用于保存最后一次修改的时间
+
+#Documents区别于固有的Docunment
+class Documents(Document):
+    __tablename__ = 'document'
+    id = Keyword(required= True)
+    uniqid = Long()     #唯一性id,去重用
+    collection_id = Long()
+    type = Keyword()    #文档类型用keyword保证不分词
+    path = Keyword()    #文档所在路径
+    name = Text(analyzer='ik_max_word')
+    chunks = Integer(default=0) #文档分片个数
+    summary = Text(analyzer='ik_max_word')  #文档摘要
+    status = Integer(default=0)
+    created = Date(default='now')
+    modified = Date(default='now')  # 用于保存最后一次修改的时间
+
+
+class Embedding(Document):
+    __tablename__ = 'embedding'
+    id = Keyword(required= True)
+    document_id = Long()    #文件ID
+    collection_id = Long()    #知识库ID
+    chunk_index = Long()    #文件分片索引
+    chunk_size = Integer()  #文件分片大小
+    document = Text(analyzer='ik_max_word')       #分片内容
+    embedding = DenseVector(dims=768)
+    status = Integer(default=0)
+    created = Date(default='now')
+    modified = Date(default='now')  # 用于保存最后一次修改的时间
+
+class Bot(Document):
+    __tablename__ = 'bot'
+    id = Keyword(required= True)
+    user_id = Long()  # 用户ID
+    collection_id = Long()  # 知识库ID
+    hash = Integer()    #hash
+    extra = Object()    #机器人配置信息
+    status = Integer(default=0)
+    created = Date(default='now')
+    modified = Date(default='now')  # 用于保存最后一次修改的时间
+
+
+'''def init():
     Es.create_index("User")
     Es.create_index("Collection")
-    Es.create_index("Document")
+    Es.create_index("Document")'''
+
+
 def get_user(user_id):
-    user = Es.get_document_by_id(user_id)
+    user = User.get(id= user_id)
     if not user:
         raise NotFound()
     return user
 
-def save_user(openid='', name='', **kwargs):
-    query = {
-        "match": {
-            "openid": openid,
-            "name" : name
-        }
-    }
-    user_data = {
-        "openid": openid,
-        "name": name,
-        "extra": kwargs
-    }
-    response = Es.search_docunmet(index="User",query=query)
-    if not response:
-        user_id = uuid.uuid4()
-        user = Es.index_document(index="User",id =user_id,data=user_data)
-    else:
-        user_id = response["id"]
-        user = Es.es.update(index="User",id = user_id,doc=user_data)
-    return user
 
-class CollectionWithDocumentCount():
-    collection_id = ?
-    document_count = Es.search_docunmet(index="Document",query={
-        "query": {
-            "match": {
-                "collection_id": collection_id  # 替换为你的查询条件
-                "status": 0
+def save_user(openid='', name='', **kwargs):
+    s = Search(using=connections, index="User").filter("term",openid=openid,status = 0)
+    response = s.execute()
+    if not response.hits.total.value == 0:
+        user = User(
+            id=ObjID.new_id(),
+            openid=openid,
+            name=name,
+            extra=kwargs,
+        )
+        user.save()
+    else:
+        update_query = UpdateByQuery(index="User").filter("term", openid=openid, status=0).update(
+            script={
+                "source": """
+                           ctx._source.id=params.id;
+                           ctx._source.openid=params.openid;
+                           ctx._source.name=params.name;
+                           ctx._source.extra=params.extra;
+                       """,
+                "lang": "painless",
+                "params": {
+                    "id": ObjID.new_id(),
+                    "openid": openid,
+                    "name": name,
+                    "extra": kwargs,
+                }
             }
-        }
-    })["count"]
+        )
+        update_query.execute()
+
+class CollectionWithDocumentCount(Collection):
+    s = Documents.search(using=connections,index="Document").filter("term",collection_id = Collection.id,status = 0)
+    response = s.execute()
+    document_count = response.hits.total.value
+
+
 
 def get_collections(user_id):
-    response = Es.search_docunmet(index="Collection", query={
-            "query": {
-                "match": {
-                    "user_id": user_id,
-                    "status": 0
-                }
-            }
-    })
-    total = response[]
+    s = Search(using=connections, index="Collection").filter("term", user_id=user_id)
+    # 执行查询
+    response = s.execute()
+    total = response.hits.total.value
+    # 返回搜索结果（文档实例的列表）
     if total == 0:
-        return  0
-    return  total
+        return  [],0
+    return  list(response),total
 
 def get_collection_by_id(user_id, collection_id):
-    return Es.search_docunmet(index="Collection", query={
-            "query": {
-                "match": {
-                    "user_id": user_id,
-                    "collection_id":collection_id,
-                    "status": 0
-                }
-            }
-    })
+    s = Search(using=connections, index="Collection").filter("term", user_id=user_id,collection_id=collection_id)
+    response = s.execute()
+    if response.hits.total.value > 0:
+        first = response.hits[0]
+        return first
+    else:
+        return None
 
 def save_collection(user_id, name, description):
-    collecton_id = uuid.uuid4()
-    collecton_data = {
-            "user_id": user_id,
-            "name": name,
-            "description": description,
-            "status": 0
-        }
-
-    Es.index_document(index="Collection", id=collecton_id, data=collecton_data)
+    collection_id = ObjID.new_id()
+    collection = Collection(
+        id=collection_id,
+        user_id=user_id,
+        name=name,
+        description=description,
+        summary='',
+    )
+    collection.save()
 
 def update_collection_by_id(user_id, collection_id, name, description):
-    collection_data = {
-        "user_id": user_id,
-        "name": name,
-        "description": description
-        "status": 0
-    }
-    Es.es.update(index="Collection", id=collection_id, doc=collection_data)
+    update_query = UpdateByQuery(index="Collection").filter("term", user_id=user_id, id=collection_id).update(
+        script={
+            "source": """
+                               ctx._source.name=params.name;
+                               ctx._source.description=params.description;
+                           """,
+            "lang": "painless",
+            "params": {
+                "name": name,
+                "description": description,
+            }
+        }
+    )
+    update_query.execute()
 
 def delete_collection_by_id(user_id, collection_id):
-    collection_update_data ={
-        "source": "ctx._source.status=-1"
-    }
-    Es.es.update(index="Collection", id=collection_id, script= collection_update_data)
-    query = {'term':{'collection_id':collection_id}}
-    bot_update_data ={
-        "source": "ctx._source.collection = '' "
-    }
-    Es.es.update_by_query(index= "Bot",query=query,script=bot_update_data)
+    s = Search(using=connections, index="Collection").filter("term", user_id=user_id, collection_id=collection_id)
+    response = s.execute()
+    # 遍历搜索结果中的每个文档，将 status 更新为 -1
+    for document in response:
+        document.update(status=-1)
+    s = Search(using=connections, index="Bot").filter("term", collection_id=collection_id)
+    response = s.execute()
+    for document in response:
+        document.update(collection_id = "")
 
 def get_document_id_by_uniqid(collection_id, uniqid):
-    Es
+    s = Search(using=connections, index="Docunment").filter("term", uniqid=uniqid)
+    response = s.execute()
+    return list(response)
+
 def get_documents_by_collection_id(user_id, collection_id):
     collection = get_collection_by_id(user_id, collection_id)
     assert collection, '找不到对应知识库'
-    query = {'term':{
-        'collection_id':collection_id,
-        'status' : 0
-    }}
-    total = Es.es.count(index="Document",query=query)["count"]
+    s = Search(using=connections, index="Docunment").filter("term", collection_id =collection_id,status = 0).sort({"created": {"order": "desc"}})
+    response = s.execute()
+    total = response.hits.total.value
+    # 返回搜索结果（文档实例的列表）
     if total == 0:
         return [], 0
-    return Es.es.search(index="Document",query=query), total
+    return list(response), total
 
 def remove_document_by_id(user_id, collection_id, document_id):
     collection = get_collection_by_id(user_id, collection_id)
     assert collection, '找不到对应知识库'
-    update_data = {
-        "source": "ctx._source.status=-1"
-    }
-    Es.es.update(index="Documents", id=document_id, script=update_data)
-    query = {'term':{'document_id':document_id}}
-    Es.es.update_by_query(index="Embedding",query=query, script=update_data)
+    s = Search(using=connections, index="Document").filter("term", id=document_id)
+    response = s.execute()
+    # 遍历搜索结果中的每个文档，将 status 更新为 -1
+    for document in response:
+        document.update(status=-1)
+    s = Search(using=connections, index="Embedding").filter("term", document_id=document_id)
+    response = s.execute()
+    # 遍历搜索结果中的每个文档，将 status 更新为 -1
+    for document in response:
+        document.update(status=-1)
+
 
 def purge_document_by_id(document_id):
-    Es.es.delete(index="Document",id=document_id)
-    query = {'term': {'document_id': document_id}}
-    Es.es.delete_by_query(index="Embedding", query=query)
+    s = Search(using=connections, index="Document").filter("term", id=document_id)
+    response = s.execute()
+    for document in response:
+        document.delete()
+    s = Search(using=connections, index="Embedding").filter("term", document_id=document_id)
+    response = s.execute()
+    # 遍历搜索结果中的每个文档，将 status 更新为 -1
+    for document in response:
+        document.delete()
 
 def set_document_summary(document_id, summary):
-    update_data = {
-        "source": "ctx._source.summary = "
-    }
-    Es.es.update(index="Documents", id=document_id, script=update_data)
+    s = Search(using=connections, index="Embedding").filter("term", id=document_id)
+    response = s.execute()
+    for document in response:
+        document.update(summary = summary)
+
+
+def get_document_by_id(document_id):
+    s = Search(using=connections, index="Document").filter("term", id=document_id)
+    response = s.execute()
+    if response.hits.total.value > 0:
+        first = response.hits[0]
+        return first
+    else:
+        return None
+
