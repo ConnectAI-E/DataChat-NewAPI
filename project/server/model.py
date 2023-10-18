@@ -1,6 +1,4 @@
-from es import Es
 import bson
-from datetime import datetime
 from elasticsearch_dsl import (
     UpdateByQuery,
     Search,
