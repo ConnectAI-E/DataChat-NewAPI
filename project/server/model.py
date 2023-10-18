@@ -30,7 +30,6 @@ class ObjID():
 
 class User(Document):
     __tablename__ = 'user'
-    id = Keyword(required= True)
     openid = Long()
     name = Text(fields={"keyword": Keyword()})
     status = Integer(default=0)
@@ -44,7 +43,6 @@ class User(Document):
 
 class Collection(Document):
     __tablename__ = 'collection'
-    id = Keyword(required= True)
     user_id = Long()
     name = Text(analyzer='ik_max_word')
     description = Text(analyzer='ik_max_word')  #知识库描述
@@ -56,7 +54,6 @@ class Collection(Document):
 #Documents区别于固有的Docunment
 class Documents(Document):
     __tablename__ = 'document'
-    id = Keyword(required= True)
     uniqid = Long()     #唯一性id,去重用
     collection_id = Long()
     type = Keyword()    #文档类型用keyword保证不分词
@@ -71,7 +68,6 @@ class Documents(Document):
 
 class Embedding(Document):
     __tablename__ = 'embedding'
-    id = Keyword(required= True)
     document_id = Long()    #文件ID
     collection_id = Long()    #知识库ID
     chunk_index = Long()    #文件分片索引
@@ -84,7 +80,6 @@ class Embedding(Document):
 
 class Bot(Document):
     __tablename__ = 'bot'
-    id = Keyword(required= True)
     user_id = Long()  # 用户ID
     collection_id = Long()  # 知识库ID
     hash = Integer()    #hash
@@ -112,38 +107,19 @@ def save_user(openid='', name='', **kwargs):
     response = s.execute()
     if not response.hits.total.value == 0:
         user = User(
-            id=ObjID.new_id(),
+            meta={'id': ObjID.new_id()},
             openid=openid,
             name=name,
             extra=kwargs,
         )
         user.save()
     else:
-        update_query = UpdateByQuery(index="User").filter("term", openid=openid, status=0).update(
-            script={
-                "source": """
-                           ctx._source.id=params.id;
-                           ctx._source.openid=params.openid;
-                           ctx._source.name=params.name;
-                           ctx._source.extra=params.extra;
-                       """,
-                "lang": "painless",
-                "params": {
-                    "id": ObjID.new_id(),
-                    "openid": openid,
-                    "name": name,
-                    "extra": kwargs,
-                }
-            }
-        )
-        update_query.execute()
-
+        user = User.get(id = response.hits[0].meta.id)
+        user.update(openid=openid,name=name,extra=kwargs)
 class CollectionWithDocumentCount(Collection):
     s = Documents.search(using=connections,index="Document").filter("term",collection_id = Collection.id,status = 0)
     response = s.execute()
     document_count = response.hits.total.value
-
-
 
 def get_collections(user_id):
     s = Search(using=connections, index="Collection").filter("term", user_id=user_id)
@@ -156,13 +132,14 @@ def get_collections(user_id):
     return  list(response),total
 
 def get_collection_by_id(user_id, collection_id):
-    s = Search(using=connections, index="Collection").filter("term", user_id=user_id,collection_id=collection_id)
-    response = s.execute()
-    if response.hits.total.value > 0:
-        first = response.hits[0]
-        return first
+    collection = Collection.get(id = collection_id)
+    if collection :
+        if collection.user_id == user_id:
+            return collection
+        else:
+            return None
     else:
-        return None
+        return collection
 
 def save_collection(user_id, name, description):
     collection_id = ObjID.new_id()
@@ -192,11 +169,9 @@ def update_collection_by_id(user_id, collection_id, name, description):
     update_query.execute()
 
 def delete_collection_by_id(user_id, collection_id):
-    s = Search(using=connections, index="Collection").filter("term", user_id=user_id, collection_id=collection_id)
-    response = s.execute()
-    # 遍历搜索结果中的每个文档，将 status 更新为 -1
-    for document in response:
-        document.update(status=-1)
+    update_query = UpdateByQuery(using=connections,index="Collection").filter("term", user_id=user_id, id=collection_id)
+
+    update_query.execute()
     s = Search(using=connections, index="Bot").filter("term", collection_id=collection_id)
     response = s.execute()
     for document in response:
@@ -259,4 +234,5 @@ def get_document_by_id(document_id):
         return first
     else:
         return None
+
 
