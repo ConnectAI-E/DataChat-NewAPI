@@ -18,7 +18,7 @@ from elasticsearch_dsl import (
     DenseVector
 )
 class NotFound(Exception): pass
-connections = connections.create_connection(hosts="https://192.168.239.128:9200")
+connections.create_connection(alias="es",hosts="https://elastic:fsMxQANdq1aZylypQWZD@192.168.239.128:9200")
 
 class ObjID():
     def new_id():
@@ -94,14 +94,14 @@ class Bot(Document):
 
 
 def get_user(user_id):
-    user = User.get(using= connections,id= user_id)
+    user = User.get(using= "es",id= user_id)
     if not user:
         raise NotFound()
     return user
 
 
 def save_user(openid='', name='', **kwargs):
-    s = Search(using=connections, index="User").filter("term",openid=openid,status = 0)
+    s = Search(using="es", index="User").filter("term",openid=openid,status = 0)
     response = s.execute()
     if not response.hits.total.value == 0:
         user = User(
@@ -114,6 +114,7 @@ def save_user(openid='', name='', **kwargs):
     else:
         user = User.get(id = response.hits[0].meta.id)
         user.update(openid=openid,name=name,extra=kwargs)
+'''
 class CollectionWithDocumentCount(Collection):
     s = Documents.search(using=connections,index="Document").filter("term",collection_id = Collection.id,status = 0)
     response = s.execute()
@@ -231,6 +232,6 @@ def get_document_by_id(document_id):
         first = response.hits[0]
         return first
     else:
-        return None
+        return None'''
 
 

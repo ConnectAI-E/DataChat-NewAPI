@@ -5,6 +5,9 @@ from fastapi.templating import Jinja2Templates
 from worker import create_task
 from server import model
 
+
+
+
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -21,11 +24,11 @@ def run_task(payload = Body(...)):
     task = create_task.delay(int(task_type))
     return JSONResponse({"task_id": task.id})
 
-@app.get("/test/<user_id>")
+@app.get("/test/{user_id}")
 def run_test_get(user_id):
     return model.get_user(user_id)
 
-@app.put("/test/")
+@app.put("/test/{openid}/{name}")
 def run_test_save(openid,name):
     return model.save_user(openid=openid,name=name)
 @app.post("/test")
