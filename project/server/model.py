@@ -20,7 +20,7 @@ from elasticsearch_dsl import (
     DenseVector
 )
 class NotFound(Exception): pass
-connections.create_connection(hosts="https://localhost:9200")
+connections = connections.create_connection(hosts="https://192.168.239.128:9200")
 
 class ObjID():
     def new_id():
@@ -96,7 +96,7 @@ class Bot(Document):
 
 
 def get_user(user_id):
-    user = User.get(id= user_id)
+    user = User.get(using= connections,id= user_id)
     if not user:
         raise NotFound()
     return user
