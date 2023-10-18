@@ -4,7 +4,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from worker import create_task
 from server import model
-import requests
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -26,10 +25,8 @@ def run_task(payload = Body(...)):
 def run_test_get(user_id):
     return model.get_user(user_id)
 
-@app.put("/test")
-def run_test_save():
-    name = requests.json.get('name')
-    openid = requests.json.get('openid')
+@app.put("/test/")
+def run_test_save(openid,name):
     return model.save_user(openid=openid,name=name)
 @app.post("/test")
 def run_task(payload = Body(...)):
