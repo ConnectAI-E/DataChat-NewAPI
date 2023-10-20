@@ -18,7 +18,8 @@ from elasticsearch_dsl import (
     DenseVector
 )
 class NotFound(Exception): pass
-connections.create_connection(alias="es", hosts="http://192.168.239.128:9200",basic_auth=('elastic', 'fsMxQANdq1aZylypQWZD'))
+def init():
+    connections.create_connection(alias="es", hosts="http://192.168.239.128:9200",basic_auth=('elastic', 'fsMxQANdq1aZylypQWZD'))
 
 class ObjID():
     def new_id():
@@ -101,6 +102,8 @@ def get_user(user_id):
 
 
 def save_user(openid='', name='', **kwargs):
+    init()
+    User.init(using="es")
     s = Search(using="es", index="user").filter("term", status=0).filter("term", openid=openid)
     response = s.execute()
     if not response.hits.total.value == 0:
