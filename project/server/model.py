@@ -19,7 +19,7 @@ from elasticsearch_dsl import (
 )
 class NotFound(Exception): pass
 
-
+connections.create_connection(alias="es", hosts="http://192.168.110.47:9200",basic_auth=('elastic', 'fsMxQANdq1aZylypQWZD'))
 
 class ObjID():
     def new_id():
@@ -49,6 +49,9 @@ class Collection(Document):
     status = Integer()
     created = Date()
     modified = Date()      #
+
+    class Index:
+        name = 'collection'
 
 #Documents区别于固有的Docunment
 class Documents(Document):
@@ -89,10 +92,10 @@ class Bot(Document):
 
 
 def init():
-    connections.create_connection(alias="es", hosts="http://192.168.110.43:9200",basic_auth=('elastic', 'fsMxQANdq1aZylypQWZD'))
+    connections.create_connection(alias="es", hosts="http://192.168.110.47:9200",basic_auth=('elastic', 'fsMxQANdq1aZylypQWZD'))
     User.init(using="es")
     Collection.init(using="es")
-
+    return True
 def get_user(user_id):
     user = User.get(using= "es",id= user_id)
     if not user:
@@ -118,10 +121,10 @@ def save_user(openid='', name='', **kwargs):
         user.update(using="es",openid=openid,name=name,extra=kwargs)
         return user
 
-class CollectionWithDocumentCount(Collection):
-    s = Documents.search(using="es",index="document").filter("term",collection_id = Collection.id).filter("term", status=0)
+'''class CollectionWithDocumentCount(Collection):
+    s = Documents.search(using="es",index="document").filter("term",collection_id = Collection.meta.id).filter("term", status=0)
     response = s.execute()
-    document_count = response.hits.total.value
+    document_count = response.hits.total.value'''
 
 def get_collections(user_id):
     s = Search(using="es", index="Collection").filter("term", user_id=user_id)

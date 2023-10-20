@@ -28,6 +28,12 @@ def run_task(payload = Body(...)):
 def run_test_init():
     return model.init()
 
+@app.get("/test01")
+def sum(a,b):
+    return {"a":a,"b":b}
+
+
+
 @app.put("/test/save_col/{user_id}/{name}/{description}")
 def run_test_save_col(user_id,name,description):
     return model.save_collection(user_id=user_id,name=name,description=description)
