@@ -18,8 +18,8 @@ from elasticsearch_dsl import (
     DenseVector
 )
 class NotFound(Exception): pass
-def init():
-    connections.create_connection(alias="es", hosts="http://192.168.239.128:9200",basic_auth=('elastic', 'fsMxQANdq1aZylypQWZD'))
+
+
 
 class ObjID():
     def new_id():
@@ -46,9 +46,9 @@ class Collection(Document):
     name = Text(analyzer='ik_max_word')
     description = Text(analyzer='ik_max_word')  #知识库描述
     summary = Text(analyzer='ik_max_word')  #知识库总结
-    status = Integer(default=0)
-    created = Date(default='now')
-    modified = Date(default='now')      # 用于保存最后一次修改的时间
+    status = Integer()
+    created = Date()
+    modified = Date()      #
 
 #Documents区别于固有的Docunment
 class Documents(Document):
@@ -60,9 +60,9 @@ class Documents(Document):
     name = Text(analyzer='ik_max_word')
     chunks = Integer(default=0) #文档分片个数
     summary = Text(analyzer='ik_max_word')  #文档摘要
-    status = Integer(default=0)
-    created = Date(default='now')
-    modified = Date(default='now')  # 用于保存最后一次修改的时间
+    status = Integer()
+    created = Date()
+    modified = Date()  # 用于保存最后一次修改的时间
 
 
 class Embedding(Document):
@@ -73,9 +73,9 @@ class Embedding(Document):
     chunk_size = Integer()  #文件分片大小
     document = Text(analyzer='ik_max_word')       #分片内容
     embedding = DenseVector(dims=768)
-    status = Integer(default=0)
-    created = Date(default='now')
-    modified = Date(default='now')  # 用于保存最后一次修改的时间
+    status = Integer()
+    created = Date()
+    modified = Date()  # 用于保存最后一次修改的时间
 
 class Bot(Document):
     __tablename__ = 'bot'
@@ -83,16 +83,15 @@ class Bot(Document):
     collection_id = Long()  # 知识库ID
     hash = Integer()    #hash
     extra = Object()    #机器人配置信息
-    status = Integer(default=0)
-    created = Date(default='now')
-    modified = Date(default='now')  # 用于保存最后一次修改的时间
+    status = Integer()
+    created = Date()
+    modified = Date()  # 用于保存最后一次修改的时间
 
 
-'''def init():
-    Es.create_index("User")
-    Es.create_index("Collection")
-    Es.create_index("Document")'''
-
+def init():
+    connections.create_connection(alias="es", hosts="http://192.168.110.43:9200",basic_auth=('elastic', 'fsMxQANdq1aZylypQWZD'))
+    User.init(using="es")
+    Collection.init(using="es")
 
 def get_user(user_id):
     user = User.get(using= "es",id= user_id)
@@ -102,11 +101,9 @@ def get_user(user_id):
 
 
 def save_user(openid='', name='', **kwargs):
-    init()
-    User.init(using="es")
     s = Search(using="es", index="user").filter("term", status=0).filter("term", openid=openid)
     response = s.execute()
-    if not response.hits.total.value == 0:
+    if not response.hits.total.value :
         user = User(
             meta={'id': ObjID.new_id()},
             openid=openid,
@@ -114,20 +111,20 @@ def save_user(openid='', name='', **kwargs):
             status = 0,
             extra=kwargs,
         )
-        user.save()
+        user.save(using="es")
         return user
     else:
         user = User.get(using="es",id = response.hits[0].meta.id)
         user.update(using="es",openid=openid,name=name,extra=kwargs)
         return user
-'''
+
 class CollectionWithDocumentCount(Collection):
-    s = Documents.search(using=connections,index="Document").filter("term",collection_id = Collection.id,status = 0)
+    s = Documents.search(using="es",index="document").filter("term",collection_id = Collection.id).filter("term", status=0)
     response = s.execute()
     document_count = response.hits.total.value
 
 def get_collections(user_id):
-    s = Search(using=connections, index="Collection").filter("term", user_id=user_id)
+    s = Search(using="es", index="Collection").filter("term", user_id=user_id)
     # 执行查询
     response = s.execute()
     total = response.hits.total.value
@@ -155,10 +152,11 @@ def save_collection(user_id, name, description):
         description=description,
         summary='',
     )
-    collection.save()
+    collection.save(using="es")
+    return collection
 
 def update_collection_by_id(user_id, collection_id, name, description):
-    update_query = UpdateByQuery(index="Collection").filter("term", user_id=user_id, id=collection_id).update(
+    update_query = UpdateByQuery(using="es",index="collection").filter("term", id=collection_id).filter("term", user_id=user_id).update(
         script={
             "source": """
                                ctx._source.name=params.name;
@@ -174,7 +172,7 @@ def update_collection_by_id(user_id, collection_id, name, description):
     update_query.execute()
 
 def delete_collection_by_id(user_id, collection_id):
-    update_query = UpdateByQuery(using=connections,index="Collection").filter("term", user_id=user_id, id=collection_id)
+    update_query = UpdateByQuery(using="es",index="collection").filter("term", id=collection_id).filter("term", user_id=user_id)
 
     update_query.execute()
     s = Search(using=connections, index="Bot").filter("term", collection_id=collection_id)
@@ -238,6 +236,6 @@ def get_document_by_id(document_id):
         first = response.hits[0]
         return first
     else:
-        return None'''
+        return None
 
 
