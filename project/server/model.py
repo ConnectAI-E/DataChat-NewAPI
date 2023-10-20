@@ -18,7 +18,7 @@ from elasticsearch_dsl import (
     DenseVector
 )
 class NotFound(Exception): pass
-connections.create_connection(alias="es", hosts="http://192.168.239.128:9200",basic_auth=('elastic', 'fsMxQANdq1aZylypQWZD')
+connections.create_connection(alias="es", hosts="http://192.168.239.128:9200",basic_auth=('elastic', 'fsMxQANdq1aZylypQWZD'))
 
 class ObjID():
     def new_id():
@@ -30,10 +30,10 @@ class User(Document):
     __tablename__ = 'user'
     openid = Long()
     name = Text(fields={"keyword": Keyword()})
-    status = Integer(default=0)
+    status = Integer()
     extra = Object()    # 用于保存 JSON 数据
-    created = Date(default='now')
-    modified = Date(default='now')  # 用于保存最后一次修改的时间
+    created = Date()
+    modified = Date()
 
     class Index:
         name = 'user'
@@ -108,6 +108,7 @@ def save_user(openid='', name='', **kwargs):
             meta={'id': ObjID.new_id()},
             openid=openid,
             name=name,
+            status = 0,
             extra=kwargs,
         )
         user.save()
