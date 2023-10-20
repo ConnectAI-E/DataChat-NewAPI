@@ -11,6 +11,7 @@ from redis import Redis
 from datetime import timedelta
 import os
 
+
 app = FastAPI(__name__)
 # 从环境变量中获取配置项,这里的配置项名为FASTAPI_CONFIG，可以根据需要修改
 config_value = os.environ.get("FASTAPI_CONFIG")
