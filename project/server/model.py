@@ -18,7 +18,7 @@ from elasticsearch_dsl import (
     DenseVector
 )
 class NotFound(Exception): pass
-connections.create_connection(alias="es",hosts="https://elastic:fsMxQANdq1aZylypQWZD@192.168.239.128:9200")
+connections.create_connection(alias="es", hosts="http://192.168.239.128:9200",basic_auth=('elastic', 'fsMxQANdq1aZylypQWZD')
 
 class ObjID():
     def new_id():
@@ -36,7 +36,7 @@ class User(Document):
     modified = Date(default='now')  # 用于保存最后一次修改的时间
 
     class Index:
-        name = 'User'
+        name = 'user'
 
 
 class Collection(Document):
@@ -101,7 +101,7 @@ def get_user(user_id):
 
 
 def save_user(openid='', name='', **kwargs):
-    s = Search(using="es", index="User").filter("term",openid=openid,status = 0)
+    s = Search(using="es", index="user").filter("term", status=0).filter("term", openid=openid)
     response = s.execute()
     if not response.hits.total.value == 0:
         user = User(
@@ -111,9 +111,11 @@ def save_user(openid='', name='', **kwargs):
             extra=kwargs,
         )
         user.save()
+        return user
     else:
-        user = User.get(id = response.hits[0].meta.id)
-        user.update(openid=openid,name=name,extra=kwargs)
+        user = User.get(using="es",id = response.hits[0].meta.id)
+        user.update(using="es",openid=openid,name=name,extra=kwargs)
+        return user
 '''
 class CollectionWithDocumentCount(Collection):
     s = Documents.search(using=connections,index="Document").filter("term",collection_id = Collection.id,status = 0)
