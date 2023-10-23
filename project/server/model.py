@@ -29,7 +29,7 @@ class ObjID():
 
 class User(Document):
     __tablename__ = 'user'
-    openid = Long()
+    openid = Text(fields={"keyword": Keyword()})
     name = Text(fields={"keyword": Keyword()})
     status = Integer()
     extra = Object()    # 用于保存 JSON 数据

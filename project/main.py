@@ -99,11 +99,12 @@ def login_check(code: str= "",session: Session = Depends(session_manager.use_ses
         return RedirectResponse("192.168.110.226:8004/login")
 
     user_info = requests.get('{}?code={}'.format(
-        app.config["192.168.110.226:8004/api/code2session"], code,
+        "192.168.110.226:8004/api/code2session", code,
     )).json()
 
     try:
         assert 'data' in user_info and 'openid' in user_info['data'], '获取用户信息失败'
+        return user_info['data']
         user = model.save_user(**user_info['data'])
 
         access_token, expired = create_access_token(user,session=session)
