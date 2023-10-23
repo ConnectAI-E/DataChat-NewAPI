@@ -11,3 +11,4 @@ requests
 bson
 elasticsearch_dsl
 fastapi_sessions
+fastapi-server-session

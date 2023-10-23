@@ -1,8 +1,9 @@
 from fastapi import Body, FastAPI, Form, Request,Depends
 from fastapi.responses import JSONResponse,RedirectResponse,HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi_sessions import SessionManager
+from fastapi_server_session import SessionManager
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 from fastapi_server_session import SessionManager, RedisSessionInterface, Session
 from worker import create_task
 from server import model
@@ -47,14 +48,20 @@ def login_form():
   <button type="submit">登录</button>
 </form>
     '''
+
+
+
+class Usermodel(BaseModel):
+    name : str
+    passwd : int
 @app.post('/login')
-def login_form(name,passwd):
-    app.logger.info("debug %r", (name, passwd))
+def login_form(Usermodel):
+    app.logger.info("debug %r", (Usermodel.name, Usermodel.passwd))
     # TODO 这里模拟登录，不校验用户名密码，只要能
     # TODO 后面需要完善注册登录逻辑
     user = {
-        'name': name,
-        'openid': base64.urlsafe_b64encode(name.encode()).decode(),
+        'name': Usermodel.name,
+        'openid': base64.urlsafe_b64encode(Usermodel.name.encode()).decode(),
         'permission': {
             'has_privilege': True,
             'expires': time() + 100,
