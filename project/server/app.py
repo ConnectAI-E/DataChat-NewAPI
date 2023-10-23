@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from fastapi.security import HTTPBearer, HTTPBasicCredentials
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer
-from fastapi_sessions import SessionManager
+from fastapi_server_session import SessionManager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_sessions.session_verifier import SessionVerifier
 from fastapi import HTTPException
