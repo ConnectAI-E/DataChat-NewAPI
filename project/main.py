@@ -12,6 +12,7 @@ import redis
 import base64
 import json
 import time
+import logging
 
 class InternalError(Exception): pass
 class PermissionDenied(Exception): pass
@@ -30,7 +31,7 @@ def create_access_token(user,session):
     # 同时兼容<has_privilege, expires>和<active, exp_time>
     expires = extra.get('exp_time', extra.get('permission', {}).get('expires', 0))
     privilege = extra.get('active', extra.get('permission', {}).get('has_privilege', False))
-    app.logger.debug("create_access_token %r expires %r time %r", user.extra, expires, time())
+    logging.debug("create_access_token %r expires %r time %r", user.extra, expires, time())
     if privilege and expires > time():
         return session.sid, int(expires)
     raise PermissionDenied()
@@ -54,7 +55,7 @@ def login_form():
 
 @app.post('/login')
 def login_form(name , passwd):
-    app.logger.info("debug %r", (name, passwd))
+    logging.info("debug %r", (name, passwd))
     # TODO 这里模拟登录，不校验用户名密码，只要能
     # TODO 后面需要完善注册登录逻辑
     user = {
@@ -62,14 +63,14 @@ def login_form(name , passwd):
         'openid': base64.urlsafe_b64encode(name.encode()).decode(),
         'permission': {
             'has_privilege': True,
-            'expires': time() + 100,
+            'expires': time.time() + 100,
             # TODO
             # 'collection_size': 10,
             # 'bot_size': 1,
         }
     }
     code = base64.b64encode(json.dumps(user).encode()).decode()
-    return RedirectResponse('{}/api/login?code={}'.format("192.168.110.226:8004", code))
+    return ('{}/api/login?code={}'.format("192.168.110.226:8004", code))
 
 @app.get('/favicon.ico')
 def faviconico():
@@ -83,7 +84,7 @@ def home():
 def code2session(code: str = ''):
     # 模拟客户的code2session接口
     user = json.loads(base64.urlsafe_b64decode(code).decode())
-    app.logger.debug('user %r', user)
+    logging.debug('user %r', user)
     return JSONResponse({'data': user})
 
 @app.get('/api/login')
@@ -116,11 +117,11 @@ def login_check(code: str= "",session: Session = Depends(session_manager.use_ses
         # 使用html进行跳转
         resp = HTMLResponse('<meta http-equiv="refresh" content="0;url={}/">'.format(app.config['DOMAIN']))
         resp.set_cookie("__sid__", session.sid, max_age=86400)
-        app.logger.info("session %r", session)
+        logging.info("session %r", session)
         # 登录成功，返回前端首页
         return resp
     except Exception as e:
-        app.logger.error(e)
+        logging.error(e)
         return HTMLResponse('<h1>无访问权限</h1>')
 
 
