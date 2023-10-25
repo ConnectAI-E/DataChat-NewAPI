@@ -14,6 +14,7 @@ import json
 import time
 import logging
 
+
 class InternalError(Exception): pass
 class PermissionDenied(Exception): pass
 class NeedAuth(Exception): pass
@@ -22,26 +23,38 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 session_manager = SessionManager(
-    interface=RedisSessionInterface(redis.from_url("redis://localhost"))
+    interface=RedisSessionInterface(redis.Redis(host="redis",port=6379,decode_responses=True))
 )
 
 
 def create_access_token(user,session):
     extra = user.extra.to_dict()
     # 同时兼容<has_privilege, expires>和<active, exp_time>
-    if extra.get("exp_time"):
-        expires = extra.get("exp_time")
-    elif extra.get("permission"):
-        expires = extra.get("permission")
-    elif extra.get("expires"):
-        expires = extra.get("expires")
+    if "exp_time" in extra:
+        expires = extra["exp_time"]
+    elif "permission" in extra:
+        permission = extra["permission"]
+        if "expires" in permission:
+            expires = permission["expires"]
+        else: expires = 0
     else: expires = 0
+    if "active" in extra:
+        privilege = extra["active"]
+    elif "permission" in extra:
+        permission = extra["permission"]
+        if "has_privilege" in permission:
+            privilege = permission["has_privilege"]
+        else: privilege = False
+    else:
+        privilege = False
     #privilege = extra.get('active', extra.get('permission', {}).get('has_privilege', False))
-    logging.debug("create_access_token %r expires %r time %r", user.extra, expires, time())
+    logging.debug("create_access_token %r expires %r time %r", user.extra, expires, time.time())
     #if privilege and expires > time():
-    if expires > time.time():
+    if isinstance(expires, (int, float)) and privilege and expires > time.time():
         return session.session_id, int(expires)
     raise PermissionDenied()
+
+
 
 
 @app.get('/login')
@@ -62,7 +75,7 @@ def login_form():
 
 
 @app.post('/login')
-def login_form(name , passwd):
+def login_form(name: str = Form(...), passwd: str = Form(...)):
     logging.info("debug %r", (name, passwd))
     # TODO 这里模拟登录，不校验用户名密码，只要能
     # TODO 后面需要完善注册登录逻辑
@@ -80,13 +93,15 @@ def login_form(name , passwd):
     code = base64.b64encode(json.dumps(user).encode()).decode()
     return RedirectResponse('{}/api/login?code={}'.format("http://192.168.110.226:8004", code),status_code=303)
 
+
 @app.get('/favicon.ico')
 def faviconico():
     return ''
 
 @app.get('/')
 def home():
-    return '<h1>首页</h1><a href="/api/login">登录</a>'
+    html_content = '<h1>首页</h1><a href="/api/login">登录</a>'
+    return HTMLResponse(html_content,status_code=200)
 
 @app.get('/api/code2session')
 def code2session(code: str = ''):
@@ -113,15 +128,12 @@ def login_check(code: str= "",session: Session = Depends(session_manager.use_ses
     try:
         assert 'data' in user_info and 'openid' in user_info['data'], '获取用户信息失败'
         user = model.save_user(**user_info['data'])
-
         access_token, expired = create_access_token(user,session=session)
-        return session
         # set session
         session['access_token'] = access_token
         session['expired'] = expired
         session['openid'] = user.openid
-        session['user_id'] = str(user.id)
-
+        session['user_id'] = str(user.meta.id)
         # return redirect('/')
         # 使用html进行跳转
         resp = HTMLResponse('<meta http-equiv="refresh" content="0;url={}/">'.format("http://192.168.110.226:8004"))
