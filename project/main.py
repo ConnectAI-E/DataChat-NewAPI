@@ -48,7 +48,7 @@ def create_access_token(user,session):
 def login_form():
     # 模拟客户的登录页面，
 
-        return '''
+    html_content = '''
 <h1>登录</h1>
 <form action="/login" method="post">
   <input name="name" /><br />
@@ -56,6 +56,7 @@ def login_form():
   <button type="submit">登录</button>
 </form>
     '''
+    return HTMLResponse(html_content,status_code=200)
 
 
 
@@ -77,7 +78,7 @@ def login_form(name , passwd):
         }
     }
     code = base64.b64encode(json.dumps(user).encode()).decode()
-    return RedirectResponse('{}/api/login?code={}'.format("http://192.168.110.226:8004", code))
+    return RedirectResponse('{}/api/login?code={}'.format("http://192.168.110.226:8004", code),status_code=303)
 
 @app.get('/favicon.ico')
 def faviconico():
@@ -114,6 +115,7 @@ def login_check(code: str= "",session: Session = Depends(session_manager.use_ses
         user = model.save_user(**user_info['data'])
 
         access_token, expired = create_access_token(user,session=session)
+        return session
         # set session
         session['access_token'] = access_token
         session['expired'] = expired
@@ -122,8 +124,8 @@ def login_check(code: str= "",session: Session = Depends(session_manager.use_ses
 
         # return redirect('/')
         # 使用html进行跳转
-        resp = HTMLResponse('<meta http-equiv="refresh" content="0;url={}/">'.format(app.config['DOMAIN']))
-        resp.set_cookie("__sid__", session.sid, max_age=86400)
+        resp = HTMLResponse('<meta http-equiv="refresh" content="0;url={}/">'.format("http://192.168.110.226:8004"))
+        resp.set_cookie("__sid__", session.session_id, max_age=86400)
         logging.info("session %r", session)
         # 登录成功，返回前端首页
         return resp
