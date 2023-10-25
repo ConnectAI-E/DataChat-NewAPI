@@ -19,7 +19,7 @@ from elasticsearch_dsl import (
 )
 class NotFound(Exception): pass
 
-connections.create_connection(alias="es", hosts="http://192.168.110.47:9200",basic_auth=('elastic', 'fsMxQANdq1aZylypQWZD'))
+connections.create_connection(hosts="http://192.168.110.47:9200", basic_auth=('elastic', 'fsMxQANdq1aZylypQWZD'))
 
 class ObjID():
     def new_id():
@@ -28,7 +28,6 @@ class ObjID():
         return bson.ObjectId.is_valid(value)
 
 class User(Document):
-    __tablename__ = 'user'
     openid = Text(fields={"keyword": Keyword()})
     name = Text(fields={"keyword": Keyword()})
     status = Integer()
@@ -41,7 +40,6 @@ class User(Document):
 
 
 class Collection(Document):
-    __tablename__ = 'collection'
     user_id = Long()
     name = Text(analyzer='ik_max_word')
     description = Text(analyzer='ik_max_word')  #知识库描述
@@ -55,7 +53,6 @@ class Collection(Document):
 
 #Documents区别于固有的Docunment
 class Documents(Document):
-    __tablename__ = 'document'
     uniqid = Long()     #唯一性id,去重用
     collection_id = Long()
     type = Keyword()    #文档类型用keyword保证不分词
@@ -67,9 +64,11 @@ class Documents(Document):
     created = Date()
     modified = Date()  # 用于保存最后一次修改的时间
 
+    class Index:
+        name = 'document'
+
 
 class Embedding(Document):
-    __tablename__ = 'embedding'
     document_id = Long()    #文件ID
     collection_id = Long()    #知识库ID
     chunk_index = Long()    #文件分片索引
@@ -80,8 +79,10 @@ class Embedding(Document):
     created = Date()
     modified = Date()  # 用于保存最后一次修改的时间
 
+    class Index:
+        name = 'embedding'
+
 class Bot(Document):
-    __tablename__ = 'bot'
     user_id = Long()  # 用户ID
     collection_id = Long()  # 知识库ID
     hash = Integer()    #hash
@@ -90,21 +91,23 @@ class Bot(Document):
     created = Date()
     modified = Date()  # 用于保存最后一次修改的时间
 
+    class Index:
+        name = 'bot'
+
 
 def init():
-    connections.create_connection(alias="es", hosts="http://192.168.110.47:9200",basic_auth=('elastic', 'fsMxQANdq1aZylypQWZD'))
-    User.init(using="es")
-    Collection.init(using="es")
+    User.init()
+    Collection.init()
     return True
 def get_user(user_id):
-    user = User.get(using= "es",id= user_id)
+    user = User.get(id=user_id)
     if not user:
         raise NotFound()
     return user
 
 
 def save_user(openid='', name='', **kwargs):
-    s = Search(using="es", index="user").filter("term", status=0).filter("term", openid=openid)
+    s = Search(index="user").filter("term", status=0).filter("term", openid=openid)
     response = s.execute()
     if not response.hits.total.value :
         user = User(
@@ -114,11 +117,11 @@ def save_user(openid='', name='', **kwargs):
             status = 0,
             extra=kwargs,
         )
-        user.save(using="es")
+        user.save()
         return user
     else:
-        user = User.get(using="es",id = response.hits[0].meta.id)
-        user.update(using="es",openid=openid,name=name,extra=kwargs)
+        user = User.get(id=response.hits[0].meta.id)
+        user.update(openid=openid, name=name, extra=kwargs)
         return user
 
 '''class CollectionWithDocumentCount(Collection):
@@ -127,17 +130,18 @@ def save_user(openid='', name='', **kwargs):
     document_count = response.hits.total.value'''
 
 def get_collections(user_id):
-    s = Search(using="es", index="Collection").filter("term", user_id=user_id)
+    s = Search(index="Collection").filter("term", user_id=user_id)
     # 执行查询
     response = s.execute()
     total = response.hits.total.value
     # 返回搜索结果（文档实例的列表）
     if total == 0:
         return  [],0
-    return  list(response),total
+    return list(response), total
+
 
 def get_collection_by_id(user_id, collection_id):
-    collection = Collection.get(id = collection_id)
+    collection = Collection.get(id=collection_id)
     if collection :
         if collection.user_id == user_id:
             return collection
@@ -145,6 +149,7 @@ def get_collection_by_id(user_id, collection_id):
             return None
     else:
         return collection
+
 
 def save_collection(user_id, name, description):
     collection_id = ObjID.new_id()
@@ -155,43 +160,45 @@ def save_collection(user_id, name, description):
         description=description,
         summary='',
     )
-    collection.save(using="es")
+    collection.save()
     return collection
 
+
 def update_collection_by_id(user_id, collection_id, name, description):
-    update_query = UpdateByQuery(using="es",index="collection").filter("term", id=collection_id).filter("term", user_id=user_id).update(
-        script={
-            "source": """
-                               ctx._source.name=params.name;
-                               ctx._source.description=params.description;
-                           """,
-            "lang": "painless",
-            "params": {
-                "name": name,
-                "description": description,
-            }
-        }
-    )
-    update_query.execute()
+    collection = get_collection_by_id(user_id, collection_id)
+    if not collection:
+        raise NotFound('collection not found')
+    collection.name = name
+    collection.description = description
+    collection.save()
+
 
 def delete_collection_by_id(user_id, collection_id):
-    update_query = UpdateByQuery(using="es",index="collection").filter("term", id=collection_id).filter("term", user_id=user_id)
+    collection = get_collection_by_id(user_id, collection_id)
+    if not collection:
+        raise NotFound('collection not found')
+    collection.status = -1
+    collection.save()
+    bots = Search(index="bot").filter("term", collection_id=collection_id).execute()
+    for bot in bots:
+        bot.update(collection_id='')
 
-    update_query.execute()
-    s = Search(using=connections, index="Bot").filter("term", collection_id=collection_id)
-    response = s.execute()
-    for document in response:
-        document.update(collection_id = "")
 
 def get_document_id_by_uniqid(collection_id, uniqid):
-    s = Search(using=connections, index="Docunment").filter("term", uniqid=uniqid)
+    s = Search(index="document").filter(
+        "term",
+        collection_id=collection_id,
+        uniqid=uniqid,
+        status=0
+    )
     response = s.execute()
     return list(response)
+
 
 def get_documents_by_collection_id(user_id, collection_id):
     collection = get_collection_by_id(user_id, collection_id)
     assert collection, '找不到对应知识库'
-    s = Search(using=connections, index="Docunment").filter("term", collection_id =collection_id,status = 0).sort({"created": {"order": "desc"}})
+    s = Search(index="document").filter("term", collection_id=collection_id, status=0).sort({"created": {"order": "desc"}})
     response = s.execute()
     total = response.hits.total.value
     # 返回搜索结果（文档实例的列表）
@@ -199,46 +206,90 @@ def get_documents_by_collection_id(user_id, collection_id):
         return [], 0
     return list(response), total
 
+
 def remove_document_by_id(user_id, collection_id, document_id):
     collection = get_collection_by_id(user_id, collection_id)
     assert collection, '找不到对应知识库'
-    s = Search(using=connections, index="Document").filter("term", id=document_id)
-    response = s.execute()
-    # 遍历搜索结果中的每个文档，将 status 更新为 -1
-    for document in response:
-        document.update(status=-1)
-    s = Search(using=connections, index="Embedding").filter("term", document_id=document_id)
-    response = s.execute()
-    # 遍历搜索结果中的每个文档，将 status 更新为 -1
-    for document in response:
-        document.update(status=-1)
+    doc = Documents.get(id=document_id)
+    if doc:
+        doc.update(status=-1)
+        embeddings = Search(index='embedding').filter("term", document_id=document_id).execute()
+        for embedding in embeddings:
+            embedding.update(status=-1)
 
 
 def purge_document_by_id(document_id):
-    s = Search(using=connections, index="Document").filter("term", id=document_id)
-    response = s.execute()
-    for document in response:
-        document.delete()
-    s = Search(using=connections, index="Embedding").filter("term", document_id=document_id)
-    response = s.execute()
-    # 遍历搜索结果中的每个文档，将 status 更新为 -1
-    for document in response:
-        document.delete()
+    doc = Documents.get(id=document_id)
+    if doc:
+        doc.delete()
+        embeddings = Search(index='embedding').filter("term", document_id=document_id).execute()
+        for embedding in embeddings:
+            embedding.delete()
+
 
 def set_document_summary(document_id, summary):
-    s = Search(using=connections, index="Embedding").filter("term", id=document_id)
-    response = s.execute()
-    for document in response:
-        document.update(summary = summary)
+    doc = Documents.get(id=document_id)
+    if doc:
+        doc.update(summary=summary)
 
 
 def get_document_by_id(document_id):
-    s = Search(using=connections, index="Document").filter("term", id=document_id)
+    doc = Documents.get(id=document_id)
+    return doc if doc else None
+
+
+def save_document(collection_id, name, url, chunks, type, uniqid=None):
+    did = ObjID.new_id()
+    doc = Documents(
+        id=did,
+        collection_id=collection_id,
+        type=type,
+        name=name,
+        path=url,
+        chunks=chunks,
+        uniqid=uniqid,
+        summary='',
+    )
+    doc.save()
+    return doc
+
+def save_embedding(collection_id, document_id, chunk_index, chunk_size, document, embedding):
+    eid = ObjID.new_id()
+    embedding = Embedding(
+        id=eid,
+        collection_id=collection_id,
+        document_id=document_id,
+        chunk_index=chunk_index,
+        chunk_size=chunk_size,
+        document=document,
+        embedding=embedding,
+    )
+    embedding.save()
+    return embedding
+
+
+def get_bot_list(user_id, collection_id, page, size):
+    s = Search(index="bot").filter(
+        "term",
+        user_id=user_id,
+        collection_id=collection_id,
+    ).filter(
+        "terms",
+        status=[0, 1]
+    ).sort({"created": {"order": "desc"}})
     response = s.execute()
-    if response.hits.total.value > 0:
-        first = response.hits[0]
-        return first
-    else:
-        return None
+    total = response.hits.total.value
+    # 返回搜索结果（文档实例的列表）
+    if total == 0:
+        return [], 0
+    return list(response), total
 
 
+def get_bot_by_hash(hash):
+    bot = Search(index="bot").filter(
+        "term",
+        hash=hash,
+    ).execute()
+    if response.hits.total.value == 0:
+        raise NotFound()
+    return bot[0]

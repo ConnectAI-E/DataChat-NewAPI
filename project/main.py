@@ -27,13 +27,20 @@ session_manager = SessionManager(
 
 
 def create_access_token(user,session):
-    extra = user.extra
+    extra = user.extra.to_dict()
     # 同时兼容<has_privilege, expires>和<active, exp_time>
-    expires = extra.get('exp_time', extra.get('permission', {}).get('expires', 0))
-    privilege = extra.get('active', extra.get('permission', {}).get('has_privilege', False))
+    if extra.get("exp_time"):
+        expires = extra.get("exp_time")
+    elif extra.get("permission"):
+        expires = extra.get("permission")
+    elif extra.get("expires"):
+        expires = extra.get("expires")
+    else: expires = 0
+    #privilege = extra.get('active', extra.get('permission', {}).get('has_privilege', False))
     logging.debug("create_access_token %r expires %r time %r", user.extra, expires, time())
-    if privilege and expires > time():
-        return session.sid, int(expires)
+    #if privilege and expires > time():
+    if expires > time.time():
+        return session.session_id, int(expires)
     raise PermissionDenied()
 
 
@@ -70,7 +77,7 @@ def login_form(name , passwd):
         }
     }
     code = base64.b64encode(json.dumps(user).encode()).decode()
-    return ('{}/api/login?code={}'.format("192.168.110.226:8004", code))
+    return RedirectResponse('{}/api/login?code={}'.format("http://192.168.110.226:8004", code))
 
 @app.get('/favicon.ico')
 def faviconico():
@@ -96,15 +103,14 @@ def login_check(code: str= "",session: Session = Depends(session_manager.use_ses
 
     if not code:
         # 这里使用配置的站点的登录url
-        return RedirectResponse("192.168.110.226:8004/login")
+        return RedirectResponse("http://192.168.110.226:8004/login")
 
     user_info = requests.get('{}?code={}'.format(
-        "192.168.110.226:8004/api/code2session", code,
+        "http://192.168.110.226:8004/api/code2session", code,
     )).json()
 
     try:
         assert 'data' in user_info and 'openid' in user_info['data'], '获取用户信息失败'
-        return user_info['data']
         user = model.save_user(**user_info['data'])
 
         access_token, expired = create_access_token(user,session=session)
