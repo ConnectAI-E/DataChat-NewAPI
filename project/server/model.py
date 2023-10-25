@@ -285,6 +285,18 @@ def get_bot_list(user_id, collection_id, page, size):
     return list(response), total
 
 
+
+def get_bot_by_hash(hash):
+    bot = Search(index="bot").filter(
+        "term",
+        hash=hash,
+    ).execute()
+    if response.hits.total.value == 0:
+        raise NotFound()
+    return bot[0]
+
+
+
 def get_bot_by_hash(hash):
     bot = Search(index="bot").filter(
         "term",
