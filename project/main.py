@@ -24,6 +24,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 session_manager = SessionManager(
     interface=RedisSessionInterface(redis.Redis(host="redis",port=6379,decode_responses=True))
+)
 
 
 
