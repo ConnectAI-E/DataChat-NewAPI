@@ -18,24 +18,24 @@ from models import (
     save_user,
     get_collections,
     get_collection_by_id,
-    get_collection_id_by_hash,
-    get_hash_by_collection_id,
-    get_data_by_hash,
+    #get_collection_id_by_hash,
+    #get_hash_by_collection_id,
+    #get_data_by_hash,
     save_collection,
     update_collection_by_id,
     delete_collection_by_id,
     get_documents_by_collection_id,
     remove_document_by_id,
-    query_by_collection_id,
-    chat_on_collection,
+    #query_by_collection_id,
+    #chat_on_collection,
     get_bot_list,
     get_bot_by_hash,
-    create_bot,
-    update_bot_by_hash,
-    query_by_document_id,
+    #create_bot,
+    #update_bot_by_hash,
+    #query_by_document_id,
     purge_document_by_id,
     get_document_id_by_uniqid,
-    get_docs_by_document_id,
+    #get_docs_by_document_id,
     set_document_summary,
     get_document_by_id,
 )
@@ -48,15 +48,33 @@ class PermissionDenied(Exception): pass
 class NeedAuth(Exception): pass
 
 
-def create_access_token(user):
-    extra = user.extra
+def create_access_token(user,session):
+    extra = user.extra.to_dict()
     # 同时兼容<has_privilege, expires>和<active, exp_time>
-    expires = extra.get('exp_time', extra.get('permission', {}).get('expires', 0))
-    privilege = extra.get('active', extra.get('permission', {}).get('has_privilege', False))
-    app.logger.debug("create_access_token %r expires %r time %r", user.extra, expires, time())
+    if "exp_time" in extra:
+        expires = extra["exp_time"]
+    elif "permission" in extra:
+        permission = extra["permission"]
+        if "expires" in permission:
+            expires = permission["expires"]
+        else: expires = 0
+    else: expires = 0
+    if "active" in extra:
+        privilege = extra["active"]
+    elif "permission" in extra:
+        permission = extra["permission"]
+        if "has_privilege" in permission:
+            privilege = permission["has_privilege"]
+        else: privilege = False
+    else:
+        privilege = False
+    #privilege = extra.get('active', extra.get('permission', {}).get('has_privilege', False))
+    logging.debug("create_access_token %r expires %r time %r", user.extra, expires, time())
+    #if privilege and expires > time():
     if privilege and expires > time():
-        return session.sid, int(expires)
+        return session.session_id, int(expires)
     raise PermissionDenied()
+
 
 
 @app.after_request
@@ -121,7 +139,7 @@ def login_form():
             'openid': base64.urlsafe_b64encode(name.encode()).decode(),
             'permission': {
                 'has_privilege': True,
-                'expires': time() + 100,
+                'expires': time() + 1000000,
                 # TODO
                 # 'collection_size': 10,
                 # 'bot_size': 1,
@@ -172,7 +190,7 @@ def login_check():
         session['access_token'] = access_token
         session['expired'] = expired
         session['openid'] = user.openid
-        session['user_id'] = str(user.id)
+        session['user_id'] = str(user.meta.id)
 
         # return redirect('/')
         # 使用html进行跳转
@@ -207,7 +225,7 @@ def get_access_token():
     session['access_token'] = access_token
     session['expired'] = expired
     session['openid'] = user.openid
-    session['user_id'] = str(user.id)
+    session['user_id'] = str(user.mata.id)
     app.logger.info("session %r", session)
 
     return jsonify({'code': 0, 'msg': 'success', 'access_token': access_token, 'expired': expired})
@@ -220,7 +238,7 @@ def get_account():
         'code': 0,
         'msg': 'success',
         'data': {
-            'id': user.id,
+            'id': user.mata.id,
             'name': user.name,
             'openid': user.openid,
         },
@@ -229,10 +247,8 @@ def get_account():
 
 @app.route('/api/collection', methods=['GET'])
 def api_collections():
-    page = request.args.get('page', default=1, type=int)
-    size = request.args.get('size', default=20, type=int)
     user_id = session.get('user_id', '')
-    collections, total = get_collections(user_id, page, size)
+    collections, total = get_collections(user_id)
 
     return jsonify({
         'code': 0,
