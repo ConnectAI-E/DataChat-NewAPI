@@ -48,7 +48,7 @@ def create_access_token(user,session):
     else:
         privilege = False
     #privilege = extra.get('active', extra.get('permission', {}).get('has_privilege', False))
-    logging.debug("create_access_token %r expires %r time %r", user.extra, expires, time.time())
+    logging.debug("create_access_token %r expires %r time %r", user.extra, expires, time())
     #if privilege and expires > time():
     if isinstance(expires, (int, float)) and privilege and expires > time():
         return session.session_id, int(expires)
