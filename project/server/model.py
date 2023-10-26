@@ -28,7 +28,7 @@ class ObjID():
         return bson.ObjectId.is_valid(value)
 
 class User(Document):
-    openid = Text(fields={"keyword": Keyword()})
+    openid = Keyword()
     name = Text(fields={"keyword": Keyword()})
     status = Integer()
     extra = Object()    # 用于保存 JSON 数据
@@ -40,7 +40,7 @@ class User(Document):
 
 
 class Collection(Document):
-    user_id = Long()
+    user_id = Keyword()  # 将字符串作为文档的 ID 存储
     name = Text(analyzer='ik_max_word')
     description = Text(analyzer='ik_max_word')  #知识库描述
     summary = Text(analyzer='ik_max_word')  #知识库总结
@@ -54,7 +54,7 @@ class Collection(Document):
 #Documents区别于固有的Docunment
 class Documents(Document):
     uniqid = Long()     #唯一性id,去重用
-    collection_id = Long()
+    collection_id = Keyword()  # 将字符串作为文档的 ID 存储
     type = Keyword()    #文档类型用keyword保证不分词
     path = Keyword()    #文档所在路径
     name = Text(analyzer='ik_max_word')
@@ -69,9 +69,9 @@ class Documents(Document):
 
 
 class Embedding(Document):
-    document_id = Long()    #文件ID
-    collection_id = Long()    #知识库ID
-    chunk_index = Long()    #文件分片索引
+    document_id = Keyword()     #文件ID
+    collection_id = Keyword()    #知识库ID
+    chunk_index = Keyword()    #文件分片索引
     chunk_size = Integer()  #文件分片大小
     document = Text(analyzer='ik_max_word')       #分片内容
     embedding = DenseVector(dims=768)
@@ -83,8 +83,8 @@ class Embedding(Document):
         name = 'embedding'
 
 class Bot(Document):
-    user_id = Long()  # 用户ID
-    collection_id = Long()  # 知识库ID
+    user_id = Keyword()  # 用户ID
+    collection_id = Keyword()  # 知识库ID
     hash = Integer()    #hash
     extra = Object()    #机器人配置信息
     status = Integer()
@@ -154,7 +154,7 @@ def get_collection_by_id(user_id, collection_id):
 def save_collection(user_id, name, description):
     collection_id = ObjID.new_id()
     collection = Collection(
-        id=collection_id,
+        meta={'id': collection_id},
         user_id=user_id,
         name=name,
         description=description,
