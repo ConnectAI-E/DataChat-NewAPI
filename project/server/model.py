@@ -130,7 +130,7 @@ def save_user(openid='', name='', **kwargs):
     document_count = response.hits.total.value'''
 
 def get_collections(user_id):
-    s = Search(index="Collection").filter("term", user_id=user_id)
+    s = Search(index="collection").filter("term", user_id=user_id)
     # 执行查询
     response = s.execute()
     total = response.hits.total.value

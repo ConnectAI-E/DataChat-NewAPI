@@ -24,7 +24,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 session_manager = SessionManager(
     interface=RedisSessionInterface(redis.Redis(host="redis",port=6379,decode_responses=True))
-)
+
+
 
 
 def create_access_token(user,session):
@@ -50,11 +51,34 @@ def create_access_token(user,session):
     #privilege = extra.get('active', extra.get('permission', {}).get('has_privilege', False))
     logging.debug("create_access_token %r expires %r time %r", user.extra, expires, time())
     #if privilege and expires > time():
-    if isinstance(expires, (int, float)) and privilege and expires > time():
+    expires += 10000
+    if privilege and expires > time():
         return session.session_id, int(expires)
     raise PermissionDenied()
 
 
+@app.middleware("http")
+def before_request_callback(request : Request,session: Session = Depends(session_manager.use_session)):
+    request.state.REQUEST_TIME = time()
+    if request.path_params in [
+        '/api/access_token',
+        '/api/login', '/login', '/api/code2session',
+        '/', '/favicon.ico',
+    ]:
+        return
+    if '/embed' in request.path_params and '/chat/completions' in request.path_params:
+        # 这个接口不使用session校验，而是通过hash判断是否可用
+        return
+    access_token = session.get('access_token', '')
+    expired = session.get('expired', 0)
+    user_id = session.get('user_id', '')
+    if access_token and user_id:
+        if expired > time():
+            pass
+        else:
+            raise PermissionDenied()
+    else:
+        raise NeedAuth()
 
 
 @app.get('/login')
@@ -145,14 +169,79 @@ def login_check(code: str= "",session: Session = Depends(session_manager.use_ses
         logging.error(e)
         return HTMLResponse('<h1>无访问权限</h1>')
 
+@app.get('/api/access_token')
+def get_access_token(request: Request,code : str = '',session: Session = Depends(session_manager.use_session)):
+    # TODO mock
+    if code == 'JhHogaYEJId1lWLN':
+        user_info = {'data': {'openid': 'JhHogaYEJId1lWLN', 'name': 'mock user'}}
+    else:
+        # user_info = requests.get('{}/api/code2session?code={}'.format(
+        user_info = requests.get('{}?code={}'.format(
+            # support using custom url
+            request.headers.get('X-System-Url', "http://192.168.110.226:8004/api/code2session"), code,
+        )).json()
+
+    assert 'data' in user_info and 'openid' in user_info['data'], '获取用户信息失败'
+    user = model.save_user(**user_info['data'])
+
+    access_token, expired = create_access_token(user,session)
+    # set session
+    session['access_token'] = access_token
+    session['expired'] = expired
+    session['openid'] = user.openid
+    session['user_id'] = str(user.meta.id)
+    logging.info("session %r", session)
+
+    return JSONResponse({'code': 0, 'msg': 'success', 'access_token': access_token, 'expired': expired})
 
 
+@app.get('/api/account')
+def get_account(session: Session = Depends(session_manager.use_session)):
+    user = model.get_user(session.get('user_id', ''))
+    return JSONResponse({
+        'code': 0,
+        'msg': 'success',
+        'data': {
+            'id': user.meta.id,
+            'name': user.name,
+            'openid': user.openid,
+        },
+    })
 
+@app.get('/api/collection')
+def api_collections(session: Session = Depends(session_manager.use_session)):
+    user_id = session.get('user_id', '')
+    collections, total = model.get_collections(user_id)
 
+    return JSONResponse({
+        'code': 0,
+        'msg': 'success',
+        'data': [{
+            'id': collection.meta.id,
+            'name': collection.name,
+            'description': collection.description,
+            'document_count': collection.document_count,
+            'created': int(collection.created.timestamp() * 1000),
+        } for collection in collections],
+        'total': total,
+    })
 
+@app.post('/api/collection')
+def api_save_collection(request : Request,session: Session = Depends(session_manager.use_session)):
+    user_id = session.get('user_id', '')
+    name = request.json.get('name')
+    description = request.json.get('description')
+    logging.info("debug %r", [name, description])
+    collection_id = model.save_collection(user_id, name, description)
 
-
-
+    return JSONResponse({
+        'code': 0,
+        'msg': 'success',
+        'data': {
+            'id': collection_id,
+            'collection_id': collection_id,
+        },
+    })
 
 
 
