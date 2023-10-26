@@ -5,9 +5,6 @@ from time import time
 from uuid import uuid4
 from copy import deepcopy
 from datetime import datetime
-from sqlalchemy import String, text, select, and_, func
-from sqlalchemy.orm import column_property
-from pgvector.sqlalchemy import Vector
 from langchain.schema import Document, BaseRetriever
 from langchain.chat_models import ChatOpenAI, AzureChatOpenAI
 from langchain.prompts.chat import (
