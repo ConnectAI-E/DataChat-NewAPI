@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse,RedirectResponse,HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi_server_session import SessionManager
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, BaseSettings
 from fastapi_server_session import SessionManager, RedisSessionInterface, Session
 from worker import create_task
 from server import model
@@ -19,17 +19,28 @@ class InternalError(Exception): pass
 class PermissionDenied(Exception): pass
 class NeedAuth(Exception): pass
 
+
+class Settings(BaseSettings):
+    domain: str = "192.168.110.81"
+    redis_host: str = "redis"
+    redis_port: int = 6379
+    system_login_url: str = "http://192.168.110.81:8085/login"
+    system_url: str = "http://192.168.110.81:8085/api/code2session"
+    upload_path: str = "/data/files"
+
+
+settings = Settings()
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
 session_manager = SessionManager(
-    interface=RedisSessionInterface(redis.Redis(host="redis",port=6379,decode_responses=True))
+    interface=RedisSessionInterface(redis.Redis(
+        host=settings.redis_host,
+        port=settings.redis_port,
+        decode_responses=True
+    ))
 )
 
 
-
-
-def create_access_token(user,session):
+def create_access_token(user, session):
     extra = user.extra.to_dict()
     # 同时兼容<has_privilege, expires>和<active, exp_time>
     if "exp_time" in extra:
@@ -58,28 +69,29 @@ def create_access_token(user,session):
     raise PermissionDenied()
 
 
-@app.middleware("http")
-def before_request_callback(request : Request,session: Session = Depends(session_manager.use_session)):
-    request.state.REQUEST_TIME = time()
-    if request.path_params in [
-        '/api/access_token',
-        '/api/login', '/login', '/api/code2session',
-        '/', '/favicon.ico',
-    ]:
-        return
-    if '/embed' in request.path_params and '/chat/completions' in request.path_params:
-        # 这个接口不使用session校验，而是通过hash判断是否可用
-        return
-    access_token = session.get('access_token', '')
-    expired = session.get('expired', 0)
-    user_id = session.get('user_id', '')
-    if access_token and user_id:
-        if expired > time():
-            pass
-        else:
-            raise PermissionDenied()
-    else:
-        raise NeedAuth()
+# @app.middleware("http")
+# def before_request_callback(request : Request, session: Session = Depends(session_manager.use_session)):
+#     request.state.REQUEST_TIME = time()
+#     if request.path_params in [
+#         '/api/access_token',
+#         '/api/login', '/login', '/api/code2session',
+#         '/', '/favicon.ico',
+#     ]:
+#         return
+#     if '/embed' in request.path_params and '/chat/completions' in request.path_params:
+#         # 这个接口不使用session校验，而是通过hash判断是否可用
+#         return
+#     print('Session', session)
+#     access_token = session['access_token']
+#     expired = session.get('expired', 0)
+#     user_id = session.get('user_id', '')
+#     if access_token and user_id:
+#         if expired > time():
+#             pass
+#         else:
+#             raise PermissionDenied()
+#     else:
+#         raise NeedAuth()
 
 
 @app.get('/login')
