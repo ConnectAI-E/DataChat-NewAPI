@@ -11,7 +11,7 @@ import requests
 import redis
 import base64
 import json
-import time
+from time import time
 import logging
 
 
@@ -50,7 +50,7 @@ def create_access_token(user,session):
     #privilege = extra.get('active', extra.get('permission', {}).get('has_privilege', False))
     logging.debug("create_access_token %r expires %r time %r", user.extra, expires, time.time())
     #if privilege and expires > time():
-    if isinstance(expires, (int, float)) and privilege and expires > time.time():
+    if isinstance(expires, (int, float)) and privilege and expires > time():
         return session.session_id, int(expires)
     raise PermissionDenied()
 
@@ -84,7 +84,7 @@ def login_form(name: str = Form(...), passwd: str = Form(...)):
         'openid': base64.urlsafe_b64encode(name.encode()).decode(),
         'permission': {
             'has_privilege': True,
-            'expires': time.time() + 100,
+            'expires': time() + 100,
             # TODO
             # 'collection_size': 10,
             # 'bot_size': 1,
@@ -190,7 +190,7 @@ def api_collections(user_id):
         'total': total,
     })'''
 @app.post('/api/collection')
-def api_save_collection(name, description):
+def api_save_collection(name, description,session: Session = Depends(session_manager.use_session)):
     user_id = session.get('user_id', '')
     app.logger.info("debug %r", [name, description])
     collection_id = model.save_collection(user_id, name, description)
