@@ -192,7 +192,7 @@ def api_collections(user_id):
 @app.post('/api/collection')
 def api_save_collection(name, description,session: Session = Depends(session_manager.use_session)):
     user_id = session.get('user_id', '')
-    app.logger.info("debug %r", [name, description])
+    logging.info("debug %r", [name, description])
     collection_id = model.save_collection(user_id, name, description)
     return JSONResponse({
         'code': 0,
