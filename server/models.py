@@ -35,7 +35,7 @@ from langchain.chains import ConversationalRetrievalChain, RetrievalQA
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.callbacks.manager import CallbackManager
 from langchain.callbacks import get_openai_callback
-from app import db, app
+from app import app
 
 class ObjID():
     def new_id():
@@ -47,7 +47,7 @@ class ObjID():
 class NotFound(Exception): pass
 
 
-connections.create_connection(hosts="http://192.168.110.47:9200", basic_auth=('elastic', 'fsMxQANdq1aZylypQWZD'))
+connections.create_connection(hosts="http://192.168.110.34:9200", basic_auth=('elastic', 'fsMxQANdq1aZylypQWZD'))
 
 
 class User(Document):
@@ -81,7 +81,7 @@ class Documents(Document):
     type = Keyword()    #文档类型用keyword保证不分词
     path = Keyword()    #文档所在路径
     name = Text(analyzer='ik_max_word')
-    chunks = Integer(default=0) #文档分片个数
+    chunks = Integer() #文档分片个数
     summary = Text(analyzer='ik_max_word')  #文档摘要
     status = Integer()
     created = Date()
@@ -124,7 +124,6 @@ def init():
     Documents.init()
     Collection.init()
     Bot.init()
-    return True
 
 def get_user(user_id):
     user = User.get(id=user_id)
@@ -295,7 +294,7 @@ def save_embedding(collection_id, document_id, chunk_index, chunk_size, document
     return embedding
 
 
-def get_bot_list(user_id, collection_id, page, size):
+def get_bot_list(user_id, collection_id):
     s = Search(index="bot").filter(
         "term",
         user_id=user_id,
@@ -318,7 +317,7 @@ def get_bot_by_hash(hash):
         "term",
         hash=hash,
     ).execute()
-    if response.hits.total.value == 0:
+    if bot.hits.total.value == 0:
         raise NotFound()
     return bot[0]
 
@@ -329,6 +328,52 @@ def get_bot_by_hash(hash):
         "term",
         hash=hash,
     ).execute()
-    if response.hits.total.value == 0:
+    if bot.hits.total.value == 0:
         raise NotFound()
     return bot[0]
+
+def query_by_collection_id(collection_id, q):
+    from tasks import embed_query
+    embed = embed_query(q)
+    query = Q({
+  "query": {
+    "match": {
+      "title": {
+        "query": q,
+        "boost": 0.00001
+      }
+    }
+  },
+  "knn": {
+    "field": "content_vector",
+    "query_vector":embed ,
+    "k": 10,
+    "num_candidates": 50,
+    "boost": 1.0
+  },
+  "size": 20,
+  "explain": True,
+  "_source" : "title"
+}
+  )
+    s = Search(index="embedding").query(query).filter(
+        "term",
+        collection_id=collection_id,
+        status = 0,
+    )
+    result = s.execute()
+    return result
+'''    column = Embedding.embedding.cosine_distance(embed)
+    query = db.session.query(
+        EmbeddingWithDocument,
+        column.label('distinct'),
+    ).filter(
+        Embedding.collection_id == collection_id,
+        Embedding.status == 0,
+    ).order_by(
+        column,
+    )
+    total = query.count()
+    if total == 0:
+        return [], 0
+    return query_one_page(query, page, size), total'''

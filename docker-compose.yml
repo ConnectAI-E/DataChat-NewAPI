@@ -22,8 +22,8 @@ services:
     ports:
       - "8085:80"
     volumes:
-      # - ./server:/server
-      - ./files:/data/files
+      - ./server:/server
+      #- ./files:/data/files
     environment:
       - FLASK_SQLALCHEMY_DATABASE_URI=postgresql://postgres:postgres@pgvector:5432/know
       - FLASK_SESSION_TYPE=sqlalchemy

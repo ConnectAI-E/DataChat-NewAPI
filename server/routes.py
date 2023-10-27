@@ -14,6 +14,7 @@ from flask import request, session, jsonify, Response, copy_current_request_cont
 from app import app
 from models import (
     ObjID, User, Collection, Documents, Embedding,
+    init,
     get_user,
     save_user,
     get_collections,
@@ -26,7 +27,7 @@ from models import (
     delete_collection_by_id,
     get_documents_by_collection_id,
     remove_document_by_id,
-    #query_by_collection_id,
+    query_by_collection_id,
     #chat_on_collection,
     get_bot_list,
     get_bot_by_hash,
@@ -48,7 +49,7 @@ class PermissionDenied(Exception): pass
 class NeedAuth(Exception): pass
 
 
-def create_access_token(user,session):
+def create_access_token(user):
     extra = user.extra.to_dict()
     # 同时兼容<has_privilege, expires>和<active, exp_time>
     if "exp_time" in extra:
@@ -72,7 +73,7 @@ def create_access_token(user,session):
     logging.debug("create_access_token %r expires %r time %r", user.extra, expires, time())
     #if privilege and expires > time():
     if privilege and expires > time():
-        return session.session_id, int(expires)
+        return session.sid, int(expires)
     raise PermissionDenied()
 
 
@@ -180,11 +181,10 @@ def login_check():
     user_info = requests.get('{}?code={}'.format(
         app.config['SYSTEM_URL'], code,
     )).json()
-
+    init()
     try:
         assert 'data' in user_info and 'openid' in user_info['data'], '获取用户信息失败'
         user = save_user(**user_info['data'])
-
         access_token, expired = create_access_token(user)
         # set session
         session['access_token'] = access_token
@@ -326,10 +326,8 @@ def api_delete_collection_by_id(collection_id):
 
 @app.route('/api/collection/<collection_id>/documents', methods=['GET'])
 def api_get_documents_by_collection_id(collection_id):
-    page = request.args.get('page', default=1, type=int)
-    size = request.args.get('size', default=20, type=int)
     user_id = session.get('user_id', '')
-    documents, total = get_documents_by_collection_id(user_id, collection_id, page, size)
+    documents, total = get_documents_by_collection_id(user_id, collection_id)
 
     return jsonify({
         'code': 0,
@@ -414,13 +412,12 @@ def api_get_task_by_id(collection_id, task_id):
 @app.route('/api/collection/<collection_id>/query', methods=['GET'])
 def api_query_by_collection_id(collection_id):
     q = request.args.get('q', default='', type=str)
-    page = request.args.get('page', default=1, type=int)
-    size = request.args.get('size', default=20, type=int)
-    user_id = session.get('user_id', '')
+    return True
+    '''user_id = session.get('user_id', '')
     collection = get_collection_by_id(user_id, collection_id)
     assert collection, '找不到知识库或者没有权限'
 
-    documents, total = query_by_collection_id(collection_id, q, page, size)
+    documents, total = query_by_collection_id(collection_id, q)
 
     app.logger.info("%r %r", documents, total)
     app.logger.info("debug Documents %r", [(d.document, distance) for d, distance in documents])
@@ -435,7 +432,7 @@ def api_query_by_collection_id(collection_id):
             'collection_id': collection_id,
         } for document, distance in documents],
         'total': total,
-    })
+    })'''
 
 
 @app.route('/api/document/<document_id>/query', methods=['GET'])
